@@ -1,0 +1,6 @@
+{
+  "extends": "@tsconfig/recommended/tsconfig.json",
+  "paths": {
+    "*": ["node_modules/*", "src/types/*"]
+  }
+}
