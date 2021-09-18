@@ -16,6 +16,7 @@
     "@types/chai": "^4.2.21",
     "@types/debug": "^4.1.7",
     "@types/mocha": "^9.0.0",
+    "@types/url-join": "^4.0.1",
     "@typescript-eslint/eslint-plugin": "^4.29.0",
     "@typescript-eslint/parser": "^4.29.0",
     "chai": "^4.3.4",
@@ -36,6 +37,7 @@
     "debug": "^4.3.2",
     "dids": "^2.4.0",
     "ethers": "^5.4.6",
-    "key-did-provider-ed25519": "^1.1.0"
+    "key-did-provider-ed25519": "^1.1.0",
+    "url-join": "^4.0.1"
   }
 }
