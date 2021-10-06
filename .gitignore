@@ -3,3 +3,4 @@ cache/
 artifacts/
 yarn-error.log
 npm-debug.log
+dist/

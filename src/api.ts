@@ -1,7 +1,7 @@
 import {CeramicClient} from "@ceramicnetwork/http-client";
 import {IDX} from "@ceramicstudio/idx";
-import {Config as CeramicConfig} from "gasless-conviction-sdk/src/bootstrap";
-import {PublicConfig} from "gasless-conviction-sdk/src/config";
+import {Config as CeramicConfig} from "@topocount/gasless-conviction-service/src/bootstrap";
+import {PublicConfig} from "@topocount/gasless-conviction-service/src/config";
 import {TileDocument} from "@ceramicnetwork/stream-tile";
 import StreamId from "@ceramicnetwork/streamid";
 import {Caip10Link} from "@ceramicnetwork/stream-caip10-link";
@@ -10,7 +10,7 @@ import {
   Convictions,
   Proposal,
   ProposalConviction,
-} from "gasless-conviction-sdk/src/types";
+} from "@topocount/gasless-conviction-service/src/types";
 import join from "url-join";
 
 type FullProposal = Proposal & ProposalConviction;
@@ -27,15 +27,15 @@ function checkAuth(storage: CeramicStorage): string {
   return did;
 }
 
-export class cvAPI {
+export class CvApi {
   uri: string;
   ceramicStorage: CeramicStorage;
   config: PublicConfig;
 
-  static async from({ceramic, serviceURI}: ApiConfig): Promise<cvAPI> {
+  static async from({ceramic, serviceURI}: ApiConfig): Promise<CvApi> {
     const configResponse = await fetch(serviceURI);
     const config = (await configResponse.json()) as PublicConfig;
-    return new cvAPI(ceramic, serviceURI, config);
+    return new CvApi(ceramic, serviceURI, config);
   }
 
   constructor(
@@ -48,19 +48,74 @@ export class cvAPI {
     this.ceramicStorage = new CeramicStorage(ceramic, this.config.ceramic);
   }
 
+  // Global State Getters
+
   /**
-   * Create a ceramic Proposal document and then attempts
-   * to add it to the State Document. If the address passed is not linked
-   * to the authenticated DID, the Proposal Creation will error. If the
-   * address is not allow-listed by the service, a 401 error will be returned
-   * and the proposal will not be added to the state document.
+   * Get the global state document
+   */
+  async stateDocument(): Promise<ConvictionState> {
+    return this.ceramicStorage.stateDocument();
+  }
+
+  /**
+   * Get the proposal documents from the streamIds listed on the state doc
+   */
+  async proposals(): Promise<Array<FullProposal>> {
+    return this.ceramicStorage.proposals();
+  }
+
+  /**
+   * Fetch a proposal document from its DocId or StreamId, represented as a string
+   *
+   * This is useful for bringing up a proposal that isn't shown globally
+   * for some reason and may or may not be modifiable by the authenticated
+   * user
+   */
+  async fetchProposal(docId: string): Promise<TileDocument<Proposal>> {
+    return this.ceramicStorage.fetchProposal(docId);
+  }
+
+  // Actions specific to Authenticated Ceramic User
+
+  /**
+   * Get the authenticated user's convictions document
+   */
+  async getConvictions(): Promise<Convictions> {
+    return this.ceramicStorage.getConvictions();
+  }
+
+  /**
+   * Set the authenticated user's convictions document
+   */
+  async setConvictions(c: Convictions): Promise<StreamId> {
+    return this.ceramicStorage.setConvictions(c);
+  }
+
+  /**
+   * Update an existing Proposal Doc
+   */
+  async updateProposal(
+    doc: TileDocument<Proposal>,
+    nextProposal: Proposal,
+  ): Promise<StreamId> {
+    return this.ceramicStorage.setProposal(doc, nextProposal);
+  }
+
+  /**
+   * Create a ceramic Proposal document and then attempt
+   * to add it to the State Document.
+   *
+   * If the address passed is not linked to the authenticated DID, the Proposal
+   * Creation will error. If the address is not allow-listed by the service, a
+   * 401 error will be returned and the proposal will not be added to the state
+   * document.
    */
   async addProposal(proposal: Proposal, address: string): Promise<void> {
     const authenticatedDid = checkAuth(this.ceramicStorage);
     const ceramic = this.ceramicStorage.ceramic as CeramicClient;
     const accountLink = await Caip10Link.fromAccount(
       ceramic,
-      `${address}@eip155:${this.config.environment.chainId}`,
+      `${address}@eip155:${this.config.environment.chainId}`.toLowerCase(),
     );
     if (!accountLink?.did) {
       throw new Error("address not linked to any ceramic identity");
@@ -76,7 +131,7 @@ export class cvAPI {
 
     const convictions = await this.ceramicStorage.getConvictions();
     convictions.proposals.push(doc.id.toUrl());
-    this.ceramicStorage.setConvictions(convictions);
+    await this.ceramicStorage.setConvictions(convictions);
 
     const proposalupdateRequest = join(this.uri, `proposals`, address);
     await fetch(proposalupdateRequest);
@@ -128,7 +183,7 @@ class CeramicStorage {
     const participant = state.participants.find(
       (participant) => participant.account === address,
     );
-    if (!participant) return null;
+    if (!participant?.convictions) return null;
     // todo: find did
     const doc = await TileDocument.load<Convictions>(
       this.ceramic,
@@ -140,7 +195,7 @@ class CeramicStorage {
 
   async getConvictions(): Promise<Convictions> {
     const state = await this.stateDocument();
-    const EMPTY_CONVICTION = {
+    const EMPTY_CONVICTION: Convictions = {
       context: state.context,
       convictions: [],
       proposals: [],
@@ -168,9 +223,3 @@ class CeramicStorage {
     return doc;
   }
 }
-
-/*
- * Things we need to implement
- * get signed-in user's convictions (and proposals if they're allow-listed)
- * submit proposal (if allow-listed)
- */
